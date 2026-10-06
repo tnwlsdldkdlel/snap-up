@@ -1,6 +1,6 @@
 # snap-up 설계
 
-작성일: 2026-10-06 · 상태: 설계 승인, spec 검토 대기
+작성일: 2026-10-06 · 상태: 설계 승인 · 2026-10-06 개정: fal.ai 제거, 인물 분할을 브라우저로 이동
 
 ## 1. 목적
 
@@ -33,24 +33,24 @@ Next.js(App Router) + TypeScript, Vercel 배포(Fluid compute, Node 런타임). 
 
 ```
 app/page.tsx              편집 화면 1개 (client component)
-app/api/segment/route.ts  fal BiRefNet 프록시 → 인물 마스크
 app/api/edit/route.ts     OpenAI gpt-image-2 edits 프록시 (응답 스트리밍)
 middleware.ts             HTTP Basic Auth, 전 경로
 lib/mask.ts               마스크 업스케일·반전·브러시 반영·안쪽 페더
 lib/canvas.ts             정규화, 비율 확장/크롭 좌표와 역변환, 모델 size 계산
 lib/composite.ts          최종 합성 + 보존 검증
 lib/prompt.ts             프롬프트 조립
+lib/segment.ts            브라우저 인물 분할(transformers.js + BiRefNet ONNX)
 ```
 
-환경변수(서버 전용): `OPENAI_API_KEY`, `FAL_KEY`, `APP_PASSWORD`.
+환경변수(서버 전용): `OPENAI_API_KEY`, `APP_PASSWORD`.
 
-원본과 모든 버전은 브라우저 메모리에만 둔다. 외부로 나가는 것은 모델 해상도로 축소한 이미지(fal, OpenAI)뿐이다.
+원본과 모든 버전은 브라우저 메모리에만 둔다. 외부로 나가는 것은 모델 해상도로 축소한 이미지(OpenAI)뿐이다. 인물 분할은 브라우저 안에서 한다.
 
 ## 3. 처리 흐름
 
 1. **업로드·정규화**: `createImageBitmap(file, { imageOrientation: 'from-image' })` → 8bit sRGB 캔버스. 입력 40MP 초과는 거부.
 2. **대상 선택**: 배경 / 인물 / 없음.
-3. **세그멘테이션**: 축소본(긴 변 2048px 이하, JPEG q0.92)을 `/api/segment`로 보내 인물 matting alpha를 받고 기준 이미지 크기로 업스케일. 배경 선택 시 반전. 결과는 버전별로 캐시하며, 배경↔인물 전환은 재호출 없이 반전한다.
+3. **세그멘테이션**: 축소본(긴 변 2048px 이하)을 브라우저에서 transformers.js로 BiRefNet ONNX(기본 `onnx-community/BiRefNet_lite-ONNX` fp16, WebGPU 우선·WASM 폴백)에 넣어 인물 alpha를 얻고 기준 이미지 크기로 업스케일. 모델은 첫 사용 시 내려받아 브라우저 캐시에 둔다(약 115MB). 배경 선택 시 반전. 결과는 버전별로 캐시하며, 배경↔인물 전환은 재호출 없이 반전한다.
 4. **마스크 확인**: 승인 영역을 반투명 오버레이로 표시, 더하기/빼기 브러시(크기 조절)로 수정.
 5. **비율**: 확장이면 캔버스를 늘리고 새 영역을 A에 추가. 크롭이면 좌표만 기록하고 최종 단계에서 로컬 크롭.
 6. **편집 호출**: 작업 캔버스와 API 마스크를 모델 size로 축소해 프롬프트와 함께 `/api/edit` 1회 호출(대상 수정 + 공백 채우기 동시).
@@ -138,7 +138,7 @@ AI 호출 생략 규칙:
 |---|---|
 | OpenAI 콘텐츠 정책 거부 | "정책상 거부" 안내, 프롬프트 수정 유도 |
 | 429 · 5xx · 타임아웃 | 원인별 안내 + 수동 재시도 버튼 |
-| fal 세그멘테이션 실패 | 안내 후 브러시로 직접 마스크를 그려 진행 |
+| 브라우저 분할 실패(모델 로드·WebGPU 불가 등) | 안내 후 브러시로 직접 마스크를 그려 진행 |
 | 크기·비율 초과 | 클라이언트 선차단, 서버 400 |
 | 보존 검증 실패 | 채택·다운로드 차단, 기준 이미지 유지 |
 | 생성 중 재클릭 | 버튼 비활성화로 중복 호출 차단 |
@@ -158,7 +158,7 @@ Vitest.
   - 크기 초과 거부, URL 입력 거부
 - 실측(구현 계획 첫 단계)
   - 실제 스냅 사진으로 gpt-image-2 edits의 RGBA 마스크 수용 여부, 지연, 응답 크기
-  - fal BiRefNet Portrait vs Matting 모델 경계 품질 비교
+  - 브라우저 분할(BiRefNet_lite) 첫 로드 시간·분할 시간·경계 품질 (배포 실측에서)
   - Vercel Preview에서 4.5MB 초과 스트리밍 응답 통과 여부
 
 ## 11. 범위 밖 (필요가 확인되면 추가)
