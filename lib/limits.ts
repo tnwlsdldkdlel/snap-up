@@ -10,10 +10,10 @@ export const API_MASK_DILATE_PX = 32; // 모델 해상도 기준, 이음새를 �
 export const MAX_VERSIONS = 10;
 export const MAX_REFERENCES = 3;
 export const REFERENCE_MAX_SIDE = 1024; // 본문 4.5MB 예산 안에 넣으려고 축소해 보낸다
-// 첫 항목이 기본값. 2026-10-06 같은 사진 비교: 2는 가장 선명·118s, sunburst는 44s, flare는 32s지만 확대 시 뭉개짐
+// 첫 항목이 기본값. expectSec는 진행 표시용 실측 소요 시간. 2026-10-06 같은 사진 비교: 2는 가장 선명·118s, sunburst는 44s, flare는 32s지만 확대 시 뭉개짐
 export const IMAGE_MODELS = [
-  { id: 'gpt-image-2', label: 'GPT Image 2 (선명, 느림)' },
-  { id: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst (균형)' },
-  { id: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 Flare (빠름)' },
+  { id: 'gpt-image-2', label: 'GPT Image 2 (선명, 느림)', expectSec: 120 },
+  { id: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst (균형)', expectSec: 45 },
+  { id: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 Flare (빠름)', expectSec: 35 },
 ] as const;
 export type ImageModel = (typeof IMAGE_MODELS)[number]['id'];

@@ -20,3 +20,18 @@ body { margin: 0; }
 .references img { display: block; height: 64px; border-radius: var(--radius-2); }
 .references li button { position: absolute; top: -8px; right: -8px; }
 .status { min-height: 1.5em; margin: 0; }
+/* 오버레이가 사진 크기에만 덮이도록 내용 폭에 맞춘다. 사진이 없을 땐 드롭 영역이 전체 폭을 쓴다 */
+.stage-view { position: relative; max-width: 100%; display: flex; justify-content: center; }
+.stage-view:has(.drop) { width: 100%; }
+.busy-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: var(--black-a6); border-radius: var(--radius-3); z-index: 1; }
+.busy-card { background: var(--color-panel-solid); padding: 20px 28px; border-radius: var(--radius-4); box-shadow: var(--shadow-5); max-width: min(360px, 90%); }
+.busy-steps { display: flex; gap: 14px; list-style: none; padding: 0; margin: 4px 0 0; font-size: var(--font-size-1); color: var(--gray-10); }
+.busy-steps li { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.busy-steps .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gray-6); }
+.busy-steps [data-state='done'] .dot { background: var(--accent-9); }
+.busy-steps [data-state='active'] { color: var(--gray-12); font-weight: 500; }
+.busy-steps [data-state='active'] .dot { background: var(--accent-9); box-shadow: 0 0 0 3px var(--accent-a5); }
+@media (prefers-reduced-motion: reduce) { .busy-overlay .rt-Spinner { animation: none; } }
+.radix-themes {
+  --default-font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+}

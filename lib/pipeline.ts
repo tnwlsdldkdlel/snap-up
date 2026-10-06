@@ -26,6 +26,10 @@ export async function prepareReference(file: Blob): Promise<Blob> {
   return encode(resizeRGBA(img, Math.round(img.w * k), Math.round(img.h * k)), 'image/jpeg', 0.9);
 }
 
+/** 생성 단계. 진행 오버레이가 이 순서로 단계를 그린다 */
+export const GENERATE_STEPS = ['사진 준비 중', 'AI가 이미지를 그리는 중', '원본과 합성·검증 중'] as const;
+export const GENERATE_STEP_LABELS = ['준비', 'AI 생성', '합성·검증'] as const;
+
 export type GenerateInput = {
   base: RGBA; frame: Frame; target: Target; prompt: string; seg: Mask | null; brush: Brush | null; references?: Blob[]; model?: ImageModel;
 };
@@ -84,7 +88,7 @@ export async function generate(input: GenerateInput, onStage: (s: string) => voi
     return { ...(await encodeAndVerify(baseCanvas, baseCanvas, weight)), usedAI: false };
   }
 
-  onStage('AI 요청 준비 중');
+  onStage(GENERATE_STEPS[0]);
   const ms = fitModelSize(frame.cw, frame.ch);
   const image = await encode(resizeRGBA(baseCanvas, ms.w, ms.h), 'image/jpeg', 0.92);
   const maskRGBA = toApiMaskRGBA(resizeBilinear(approved, frame.cw, frame.ch, ms.w, ms.h), ms.w, ms.h, API_MASK_DILATE_PX);
@@ -104,7 +108,7 @@ export async function generate(input: GenerateInput, onStage: (s: string) => voi
   if (input.model) fd.append('model', input.model);
   refs.forEach((r, i) => fd.append('reference', r, `reference-${i + 1}.jpg`));
 
-  onStage('AI 생성 중 (1~2분)');
+  onStage(GENERATE_STEPS[1]);
   const res = await fetch('/api/edit', { method: 'POST', body: fd }).catch(() => {
     throw new Error('네트워크 오류로 요청하지 못했어요. 다시 시도하세요.');
   });
@@ -114,7 +118,7 @@ export async function generate(input: GenerateInput, onStage: (s: string) => voi
   const b64: unknown = json?.data?.[0]?.b64_json;
   if (typeof b64 !== 'string') throw new Error('AI 응답에 이미지가 없어요. 다시 시도하세요.');
 
-  onStage('합성·검증 중');
+  onStage(GENERATE_STEPS[2]);
   let decoded: RGBA;
   try {
     decoded = await decodeFile(base64ToBlob(b64, 'image/png'));

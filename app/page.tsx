@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Button, Callout, Card, Flex, IconButton, Select, SegmentedControl, Slider, Text, TextArea } from '@radix-ui/themes';
+import { Button, Callout, Card, Flex, IconButton, Select, SegmentedControl, Slider, Spinner, Text, TextArea } from '@radix-ui/themes';
+import BusyOverlay from '../components/BusyOverlay';
 import Stage, { type Tool } from '../components/Stage';
 import { RATIO_PRESETS, anchorFromOffset, checkFrame, planFrame, type Mode, type Size, type Target } from '../lib/canvas';
 import type { RGBA } from '../lib/composite';
@@ -8,7 +9,7 @@ import { IMAGE_MODELS, MAX_INPUT_PX, MAX_REFERENCES, MAX_VERSIONS, type ImageMod
 import { BRUSH_NONE, buildEditMask, paintBrush, resizeBilinear, type Mask } from '../lib/mask';
 import { promptError } from '../lib/prompt';
 import { decodeFile, rgbaToCanvas } from '../lib/browser';
-import { generate, prepareReference, refinePrompt, segment, type GenerateResult } from '../lib/pipeline';
+import { GENERATE_STEPS, GENERATE_STEP_LABELS, generate, prepareReference, refinePrompt, segment, type GenerateResult } from '../lib/pipeline';
 
 type Version = { blob: Blob; url: string };
 type Result = GenerateResult & { url: string; rawUrl?: string };
@@ -57,6 +58,10 @@ export default function Page() {
   const [result, setResult] = useState<Result | null>(null);
   const [holdOriginal, setHoldOriginal] = useState(false);
   const [variant, setVariant] = useState<Variant>('composite');
+  const [editing, setEditing] = useState(false);
+  const [busyKind, setBusyKind] = useState<'generate' | 'refine' | null>(null);
+  const [busyStart, setBusyStart] = useState(0);
+  const [doneUnseen, setDoneUnseen] = useState(false);
   const [references, setReferences] = useState<Version[]>([]);
   const [model, setModel] = useState<ImageModel>(IMAGE_MODELS[0].id);
 
@@ -80,6 +85,19 @@ export default function Page() {
   }, [versions.length, result]);
 
   useEffect(() => () => preview?.close(), [preview]);
+
+  // 작업이 시작된 시각(경과 시간 표시용). 문구가 단계별로 바뀌어도 처음 시각을 유지한다
+  useEffect(() => setBusyStart((t) => (busy ? t || Date.now() : 0)), [busy]);
+
+  // 다른 탭에 있어도 진행·완료를 알 수 있게 탭 제목에 표시한다
+  useEffect(() => {
+    document.title = busy ? `⏳ ${busy} · snap-up` : doneUnseen ? '✅ 완료 · snap-up' : 'snap-up';
+  }, [busy, doneUnseen]);
+  useEffect(() => {
+    const seen = () => !document.hidden && setDoneUnseen(false);
+    document.addEventListener('visibilitychange', seen);
+    return () => document.removeEventListener('visibilitychange', seen);
+  }, []);
 
   const overlay = useMemo(() => {
     if (!bs || target === 'all') return null;
@@ -173,6 +191,7 @@ export default function Page() {
     if (!base || !frame || !bs) return;
     setError('');
     setBusy('프롬프트 다듬는 중');
+    setBusyKind('refine');
     try {
       const brushInput = target === 'all' ? null : { mask: brush.current, w: bs.w, h: bs.h };
       const refined = await refinePrompt({ base, frame, target, prompt, seg, brush: brushInput });
@@ -182,13 +201,15 @@ export default function Page() {
       setError(e instanceof Error ? e.message : '프롬프트를 다듬지 못했어요.');
     } finally {
       setBusy('');
+      setBusyKind(null);
     }
   }
 
   async function run() {
     if (!base || !frame || !bs) return;
     setError('');
-    setBusy('준비 중');
+    setBusy(GENERATE_STEPS[0]);
+    setBusyKind('generate');
     try {
       const r = await generate(
         {
@@ -199,12 +220,16 @@ export default function Page() {
         },
         setBusy,
       );
+      if (result) revokeResult(result);
       setResult({ ...r, url: URL.createObjectURL(r.blob), rawUrl: r.raw && URL.createObjectURL(r.raw.blob) });
       setVariant('composite');
+      setEditing(false);
+      if (document.hidden) setDoneUnseen(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : '생성에 실패했어요.');
     } finally {
       setBusy('');
+      setBusyKind(null);
     }
   }
 
@@ -246,18 +271,23 @@ export default function Page() {
     }
   }
 
-  const locked = !!busy || !!result;
+  // 결과가 있어도 작업 중이 아니면 모든 선택을 열어 고친 뒤 다시 생성할 수 있게 한다
+  const locked = !!busy;
+  // 결과를 보다가 캔버스 관련 값을 바꾸면 편집 캔버스를 보여준다(결과는 유지)
+  const showResult = !!result && !editing;
+  const toCanvas = () => setEditing(true);
 
   return (
     <main className="app">
       <section className="stage">
+        <div className="stage-view" aria-busy={!!busy}>
         {!base && (
           <label className="drop">
             사진을 선택하거나 여기로 끌어다 놓으세요
             <input type="file" accept="image/*" onChange={(e) => onFile(e.target.files?.[0])} />
           </label>
         )}
-        {base && preview && frame && !result && (
+        {base && preview && frame && !showResult && (
           <Stage
             preview={preview}
             base={base}
@@ -273,10 +303,20 @@ export default function Page() {
             }}
           />
         )}
-        {result && (
+        {showResult && result && (
           // eslint-disable-next-line @next/next/no-img-element
           <img className="result" src={holdOriginal ? versions[current].url : shown!.url} alt={holdOriginal ? '편집 전' : '편집 결과'} />
         )}
+        {busy && busyStart > 0 && (
+          <BusyOverlay
+            text={busy}
+            startedAt={busyStart}
+            steps={busyKind === 'generate' ? GENERATE_STEPS : undefined}
+            labels={GENERATE_STEP_LABELS}
+            expectSec={busyKind === 'generate' ? IMAGE_MODELS.find((m) => m.id === model)?.expectSec : undefined}
+          />
+        )}
+        </div>
         {versions.length > 0 && (
           <ol className="versions" aria-label="버전">
             {versions.map((v, i) => (
@@ -294,6 +334,12 @@ export default function Page() {
       <aside className="panel">
         <Card size="2">
           <Flex direction="column" gap="4">
+            {busy && (
+              <Callout.Root size="1" color="gray">
+                <Callout.Icon><Spinner /></Callout.Icon>
+                <Callout.Text>작업 중이라 설정을 잠시 잠갔어요</Callout.Text>
+              </Callout.Root>
+            )}
             <Button asChild variant="soft" disabled={!!busy}>
               <label>
                 새 사진
@@ -302,7 +348,7 @@ export default function Page() {
             </Button>
 
             <Section title="수정 대상">
-              <SegmentedControl.Root value={target} disabled={!base || locked} onValueChange={(v) => chooseTarget(v as Target)}>
+              <SegmentedControl.Root value={target} disabled={!base || locked} onValueChange={(v) => { toCanvas(); chooseTarget(v as Target); }}>
                 <SegmentedControl.Item value="all">AI 전체</SegmentedControl.Item>
                 <SegmentedControl.Item value="background">배경</SegmentedControl.Item>
                 <SegmentedControl.Item value="person">인물</SegmentedControl.Item>
@@ -321,7 +367,7 @@ export default function Page() {
                 onChange={(e) => setPrompt(e.target.value)}
               />
               <Flex gap="2">
-                <Button variant="soft" disabled={!base || locked || !prompt.trim()} onClick={refine}>AI로 다듬기</Button>
+                <Button variant="soft" loading={busyKind === 'refine'} disabled={!base || locked || !prompt.trim()} onClick={refine}>AI로 다듬기</Button>
                 {promptBeforeRefine !== null && (
                   <Button variant="ghost" color="gray" disabled={locked} onClick={() => { setPrompt(promptBeforeRefine); setPromptBeforeRefine(null); }}>
                     원래 문장으로
@@ -364,7 +410,7 @@ export default function Page() {
             </Section>
 
             <Section title="비율">
-              <Select.Root value={String(ratioIdx)} disabled={!base || locked} onValueChange={(v) => { setRatioIdx(Number(v)); setAnchor({ x: 0.5, y: 0.5 }); }}>
+              <Select.Root value={String(ratioIdx)} disabled={!base || locked} onValueChange={(v) => { toCanvas(); setRatioIdx(Number(v)); setAnchor({ x: 0.5, y: 0.5 }); }}>
                 <Select.Trigger aria-label="비율" />
                 <Select.Content>
                   {RATIO_PRESETS.map((p, i) => (
@@ -372,7 +418,7 @@ export default function Page() {
                   ))}
                 </Select.Content>
               </Select.Root>
-              <SegmentedControl.Root value={mode} disabled={!base || locked} onValueChange={(v) => setMode(v as Mode)}>
+              <SegmentedControl.Root value={mode} disabled={!base || locked} onValueChange={(v) => { toCanvas(); setMode(v as Mode); }}>
                 <SegmentedControl.Item value="expand">확장 (AI 채움)</SegmentedControl.Item>
                 <SegmentedControl.Item value="crop">크롭</SegmentedControl.Item>
               </SegmentedControl.Root>
@@ -380,13 +426,13 @@ export default function Page() {
 
             <Section title="도구">
               {/* 항목 단위 비활성화가 없어, AI 전체면 브러시 항목을 숨긴다 */}
-              <SegmentedControl.Root value={tool} disabled={!base || locked} onValueChange={(v) => setTool(v as Tool)}>
+              <SegmentedControl.Root value={tool} disabled={!base || locked} onValueChange={(v) => { toCanvas(); setTool(v as Tool); }}>
                 <SegmentedControl.Item value="move">위치 이동</SegmentedControl.Item>
                 {target !== 'all' && <SegmentedControl.Item value="add">브러시 +</SegmentedControl.Item>}
                 {target !== 'all' && <SegmentedControl.Item value="remove">브러시 −</SegmentedControl.Item>}
               </SegmentedControl.Root>
               <Text as="div" size="2" color="gray">브러시 크기 {brushPx}px</Text>
-              <Slider aria-label="브러시 크기" min={5} max={150} value={[brushPx]} disabled={!base || locked} onValueChange={([v]) => setBrushPx(v)} />
+              <Slider aria-label="브러시 크기" min={5} max={150} value={[brushPx]} disabled={!base || locked} onValueChange={([v]) => { toCanvas(); setBrushPx(v); }} />
             </Section>
 
             {(frameErr || pErr || error) && (
@@ -397,7 +443,7 @@ export default function Page() {
             <Text as="p" aria-live="polite" size="2" color="gray" className="status">{busy}</Text>
 
             {!result ? (
-              <Button size="3" disabled={!base || locked || !!frameErr || !!pErr || nothingToDo} onClick={run}>
+              <Button size="3" loading={busyKind === 'generate'} disabled={!base || locked || !!frameErr || !!pErr || nothingToDo} onClick={run}>
                 생성
               </Button>
             ) : (
@@ -416,10 +462,14 @@ export default function Page() {
                     보호 영역 변경 {result.protectedDiff.toLocaleString()}px{result.usedAI ? '' : ' (AI 미사용)'}
                   </Text>
                 )}
-                <Button variant="soft" color="gray" onPointerDown={() => setHoldOriginal(true)} onPointerUp={() => setHoldOriginal(false)} onPointerLeave={() => setHoldOriginal(false)}>
+                <Button variant="soft" color="gray" onClick={() => setEditing(!editing)}>
+                  {editing ? '결과 보기' : '편집 화면 보기'}
+                </Button>
+                <Button variant="soft" color="gray" disabled={editing} onPointerDown={() => setHoldOriginal(true)} onPointerUp={() => setHoldOriginal(false)} onPointerLeave={() => setHoldOriginal(false)}>
                   누르고 있으면 편집 전
                 </Button>
-                <Button size="3" disabled={!shown?.ok} onClick={adopt}>채택</Button>
+                <Button size="3" disabled={locked || !shown?.ok} onClick={adopt}>채택</Button>
+                <Button variant="soft" loading={busyKind === 'generate'} disabled={locked || !!frameErr || !!pErr} onClick={run}>수정한 프롬프트로 다시 생성</Button>
                 <Button variant="outline" onClick={discard}>다시</Button>
                 {shown?.ok && (
                   <Button asChild variant="soft">
