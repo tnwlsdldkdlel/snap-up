@@ -12,7 +12,7 @@
 
 Next.js(App Router) + TypeScript, Vercel(Fluid compute, Node 런타임), Vitest.
 AI: OpenAI `gpt-image-2`(images/edits), 브라우저 인물 분할(transformers.js + BiRefNet ONNX).
-환경변수(서버 전용, `NEXT_PUBLIC_` 금지): `OPENAI_API_KEY`, `APP_PASSWORD`. `.env*`는 읽지 않는다.
+환경변수(서버 전용, `NEXT_PUBLIC_` 금지): `OPENAI_API_KEY`, `APP_ID`, `APP_PASSWORD`. `.env*`는 읽지 않는다.
 
 ## 절대 조건 (깨면 안 됨)
 
@@ -25,7 +25,7 @@ AI: OpenAI `gpt-image-2`(images/edits), 브라우저 인물 분할(transformers.
 - Vercel 함수 요청·응답 본문 4.5MB 제한 → 모델 입력은 축소본(JPEG q0.92)만 보내고, `/api/edit` 응답은 OpenAI 본문을 그대로 스트리밍한다.
 - gpt-image-2 size: 양 변 16의 배수, 총 픽셀 ≤ 2560×1440, 비율 ≤ 3:1. mask는 alpha 0 = 편집 영역이며 픽셀 잠금이 아니라 지침일 뿐이다(그래서 조건 1은 로컬 재합성으로 보장).
 - 외부 API 자동 재시도 금지(비용). URL 입력을 받지 않는다(파일 바이트만).
-- `APP_PASSWORD` 미설정 시 전 경로 차단(fail closed).
+- Basic 인증은 `APP_ID`·`APP_PASSWORD`가 모두 맞아야 통과. 둘 중 하나라도 미설정이면 전 경로 차단(fail closed).
 
 ## 커밋·push
 
