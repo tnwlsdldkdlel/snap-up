@@ -30,6 +30,11 @@ describe('checkFrame', () => {
     const small = { w: 3000, h: 2000 };
     expect(checkFrame(small, planFrame(small, 9 / 16, 'expand'))).toMatch(/2배/);
   });
+  it('3:1 초과 비율을 막는다', () => {
+    const wide = { w: 4000, h: 1000 };
+    expect(checkFrame(wide, planFrame(wide, null, 'crop'))).toMatch(/3:1/);
+    expect(checkFrame({ w: 1000, h: 4000 }, { cw: 1000, ch: 4000, ox: 0, oy: 0 })).toMatch(/3:1/);
+  });
   it('허용 범위면 null', () => {
     expect(checkFrame(base, planFrame(base, 4 / 5, 'expand'))).toBeNull();
   });

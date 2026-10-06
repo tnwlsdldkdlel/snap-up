@@ -1,7 +1,7 @@
 import { fitModelSize, type Frame, type Target } from './canvas';
 import { compositeInto, countProtectedDiff, embedRGBA, type RGBA } from './composite';
 import { API_MASK_DILATE_PX, MAX_BODY_BYTES, SEGMENT_MAX_SIDE } from './limits';
-import { any, assemble, buildEditMask, resizeBilinear, toApiMaskRGBA, type Brush, type Mask } from './mask';
+import { any, assemble, buildEditMask, resizeBilinear, snapMatte, toApiMaskRGBA, type Brush, type Mask } from './mask';
 import { userMessage } from './upstream';
 import { base64ToBlob, decodeFile, encode, resizeRGBA } from './browser';
 
@@ -15,7 +15,7 @@ export async function segment(base: RGBA): Promise<Mask> {
   const k = Math.min(1, SEGMENT_MAX_SIDE / Math.max(base.w, base.h));
   const sw = Math.round(base.w * k), sh = Math.round(base.h * k);
   const { segmentRGBA } = await import('./segment');
-  return resizeBilinear(await segmentRGBA(resizeRGBA(base, sw, sh)), sw, sh, base.w, base.h);
+  return snapMatte(resizeBilinear(await segmentRGBA(resizeRGBA(base, sw, sh)), sw, sh, base.w, base.h));
 }
 
 export type GenerateInput = { base: RGBA; frame: Frame; target: Target; prompt: string; seg: Mask | null; brush: Brush | null };
@@ -29,9 +29,12 @@ export async function generate(input: GenerateInput, onStage: (s: string) => voi
   const { approved, weight } = assemble(edit, base, frame, featherPx);
   const baseCanvas = embedRGBA(base, frame);
 
+  if (input.target !== 'none' && !expanded && !any(edit ?? new Uint8Array(0))) {
+    throw new Error('수정할 영역이 없어요. 브러시로 칠하세요.');
+  }
   if (!any(approved)) {
-    // 편집·확장 없음(크롭만): AI 없이 로컬 처리
-    return { out: baseCanvas, blob: await encode(baseCanvas, 'image/png'), protectedDiff: 0, usedAI: false };
+    // 편집·확장 없음(크롭만): AI 없이 로컬 처리. weight가 0이라 전 픽셀이 보호 대상
+    return { ...(await encodeAndVerify(baseCanvas, baseCanvas, weight)), usedAI: false };
   }
 
   onStage('AI 요청 준비 중');
@@ -60,9 +63,20 @@ export async function generate(input: GenerateInput, onStage: (s: string) => voi
   if (typeof b64 !== 'string') throw new Error('AI 응답에 이미지가 없어요. 다시 시도하세요.');
 
   onStage('합성·검증 중');
-  const ai = resizeRGBA(await (async () => decodeFile(base64ToBlob(b64, 'image/png')))().catch(() => { throw unreadable(); }), frame.cw, frame.ch);
+  let decoded: RGBA;
+  try {
+    decoded = await decodeFile(base64ToBlob(b64, 'image/png'));
+  } catch {
+    throw unreadable();
+  }
+  const ai = resizeRGBA(decoded, frame.cw, frame.ch);
   const out: RGBA = { w: frame.cw, h: frame.ch, data: compositeInto(ai.data, baseCanvas.data, weight) as Uint8ClampedArray<ArrayBuffer> };
+  return { ...(await encodeAndVerify(out, baseCanvas, weight)), usedAI: true };
+}
+
+/** PNG로 저장한 뒤 재디코딩해 보호 영역 차이를 센다. */
+async function encodeAndVerify(out: RGBA, baseCanvas: RGBA, weight: Mask) {
   const blob = await encode(out, 'image/png');
   const check = await decodeFile(blob);
-  return { out, blob, protectedDiff: countProtectedDiff(baseCanvas.data, check.data, weight), usedAI: true };
+  return { out, blob, protectedDiff: countProtectedDiff(baseCanvas.data, check.data, weight) };
 }

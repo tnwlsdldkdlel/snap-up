@@ -42,9 +42,10 @@ export default function Stage({ preview, base, frame, overlay, tool, brushPx, on
 
   function paint(e: React.PointerEvent) {
     const r = ref.current!.getBoundingClientRect();
-    const nx = ((e.clientX - r.left) / k - frame.ox) / base.w;
-    const ny = ((e.clientY - r.top) / k - frame.oy) / base.h;
-    onPaint(nx, ny, brushPx / k / base.w, tool === 'add');
+    const s = dw / r.width; // CSS 축소 보정(캔버스 내부 폭 / 표시 폭)
+    const nx = (((e.clientX - r.left) * s) / k - frame.ox) / base.w;
+    const ny = (((e.clientY - r.top) * s) / k - frame.oy) / base.h;
+    onPaint(nx, ny, (brushPx * s) / k / base.w, tool === 'add');
   }
 
   return (
@@ -63,7 +64,9 @@ export default function Stage({ preview, base, frame, overlay, tool, brushPx, on
         if (!e.buttons) return;
         if (tool !== 'move') return paint(e);
         const d = drag.current;
-        if (d) onMove(d.ox + (e.clientX - d.x) / k, d.oy + (e.clientY - d.y) / k);
+        if (!d) return;
+        const s = dw / e.currentTarget.getBoundingClientRect().width;
+        onMove(d.ox + ((e.clientX - d.x) * s) / k, d.oy + ((e.clientY - d.y) * s) / k);
       }}
       onPointerUp={() => (drag.current = null)}
     />

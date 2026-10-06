@@ -30,6 +30,7 @@ export function planFrame(base: Size, ratio: number | null, mode: Mode, anchor =
 }
 
 export function checkFrame(base: Size, f: Frame): string | null {
+  if (Math.max(f.cw / f.ch, f.ch / f.cw) > 3) return '비율이 3:1을 넘어요. 다른 비율을 고르세요.';
   if (f.cw * f.ch > MAX_OUTPUT_PX) return '출력이 60MP를 넘어요. 다른 비율을 고르세요.';
   if (f.cw * f.ch > base.w * base.h * MAX_EXPAND_RATIO) return '확장 면적이 원본의 2배를 넘어요.';
   return null;

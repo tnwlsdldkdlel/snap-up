@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BRUSH_NONE, any, applyBrush, assemble, buildEditMask, dilate, embed, featherInside,
-  invert, newAreaMask, paintBrush, resizeBilinear, toApiMaskRGBA,
+  invert, newAreaMask, paintBrush, resizeBilinear, snapMatte, toApiMaskRGBA,
 } from '../lib/mask';
 import { planFrame } from '../lib/canvas';
 
@@ -108,5 +108,12 @@ describe('embed / newAreaMask / assemble', () => {
       for (let i = 0; i < approved.length; i++) if (approved[i] === 0) expect(weight[i]).toBe(0);
       expect(approved[(1 + f.oy) * f.cw + (2 + f.ox)]).toBe(255);
     }
+  });
+});
+
+describe('snapMatte', () => {
+  it('끝값 근처는 0/255로 붙이고 중간값은 유지', () => {
+    const m = snapMatte(Uint8Array.from([0, 8, 9, 246, 247, 254, 255]));
+    expect(Array.from(m)).toEqual([0, 0, 9, 246, 255, 255, 255]);
   });
 });

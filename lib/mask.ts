@@ -151,6 +151,13 @@ export function assemble(edit: Mask | null, base: Size, f: Frame, featherPx: num
   return { approved, weight };
 }
 
+/** 모델 매트의 양 끝 잡음(≤lo → 0, ≥hi → 255)을 정리한다. 복사본을 반환. */
+export function snapMatte(m: Mask, lo = 8, hi = 247): Mask {
+  const out = new Uint8Array(m.length);
+  for (let i = 0; i < m.length; i++) out[i] = m[i] <= lo ? 0 : m[i] >= hi ? 255 : m[i];
+  return out;
+}
+
 export function any(m: Mask): boolean {
   for (let i = 0; i < m.length; i++) if (m[i] !== 0) return true;
   return false;
