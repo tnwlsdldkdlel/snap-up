@@ -50,13 +50,17 @@ export async function generate(input: GenerateInput, onStage: (s: string) => voi
   fd.append('expanded', expanded ? '1' : '0');
 
   onStage('AI 생성 중 (1~2분)');
-  const res = await fetch('/api/edit', { method: 'POST', body: fd });
+  const res = await fetch('/api/edit', { method: 'POST', body: fd }).catch(() => {
+    throw new Error('네트워크 오류로 요청하지 못했어요. 다시 시도하세요.');
+  });
   if (!res.ok) throw new Error(await failMessage(res));
-  const b64: unknown = (await res.json())?.data?.[0]?.b64_json;
+  const unreadable = () => new Error('AI 응답을 읽지 못했어요. 다시 시도하세요.');
+  const json: any = await res.json().catch(() => { throw unreadable(); });
+  const b64: unknown = json?.data?.[0]?.b64_json;
   if (typeof b64 !== 'string') throw new Error('AI 응답에 이미지가 없어요. 다시 시도하세요.');
 
   onStage('합성·검증 중');
-  const ai = resizeRGBA(await decodeFile(base64ToBlob(b64, 'image/png')), frame.cw, frame.ch);
+  const ai = resizeRGBA(await (async () => decodeFile(base64ToBlob(b64, 'image/png')))().catch(() => { throw unreadable(); }), frame.cw, frame.ch);
   const out: RGBA = { w: frame.cw, h: frame.ch, data: compositeInto(ai.data, baseCanvas.data, weight) as Uint8ClampedArray<ArrayBuffer> };
   const blob = await encode(out, 'image/png');
   const check = await decodeFile(blob);
