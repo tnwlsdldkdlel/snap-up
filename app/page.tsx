@@ -55,6 +55,8 @@ export default function Page() {
     return () => window.removeEventListener('beforeunload', h);
   }, [versions.length, result]);
 
+  useEffect(() => () => preview?.close(), [preview]);
+
   const overlay = useMemo(() => {
     if (!bs || target === 'none') return null;
     const m = buildEditMask(target, segSmall, { mask: brush.current, w: bs.w, h: bs.h }, bs)!;
@@ -71,7 +73,6 @@ export default function Page() {
   }, [target, segSmall, brushTick, bs?.w, bs?.h]);
 
   async function applyBase(img: RGBA) {
-    if (img.w * img.h > MAX_INPUT_PX) throw new Error('40MP 이하 사진만 지원해요.');
     const p = scaled(img, PREVIEW_SIDE);
     setPreview(await createImageBitmap(rgbaToCanvas(img), { resizeWidth: p.w, resizeHeight: p.h, resizeQuality: 'high' }));
     setBase(img);
@@ -91,7 +92,9 @@ export default function Page() {
     setError('');
     setBusy('불러오는 중');
     try {
-      await applyBase(await decodeFile(file));
+      const img = await decodeFile(file);
+      if (img.w * img.h > MAX_INPUT_PX) throw new Error('40MP 이하 사진만 지원해요.');
+      await applyBase(img);
       versions.forEach((v) => URL.revokeObjectURL(v.url));
       if (result) URL.revokeObjectURL(result.url);
       setResult(null);
@@ -140,12 +143,20 @@ export default function Page() {
 
   async function adopt() {
     if (!result || result.protectedDiff > 0) return;
-    const next = [...versions, { blob: result.blob, url: result.url }];
-    if (next.length > MAX_VERSIONS) URL.revokeObjectURL(next.splice(1, 1)[0].url);
-    setVersions(next);
-    setCurrent(next.length - 1);
-    setResult(null);
-    await applyBase(result.out);
+    setError('');
+    setBusy('불러오는 중');
+    try {
+      await applyBase(result.out);
+      const next = [...versions, { blob: result.blob, url: result.url }];
+      if (next.length > MAX_VERSIONS) URL.revokeObjectURL(next.splice(1, 1)[0].url);
+      setVersions(next);
+      setCurrent(next.length - 1);
+      setResult(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '채택에 실패했어요.');
+    } finally {
+      setBusy('');
+    }
   }
 
   function discard() {
@@ -159,6 +170,8 @@ export default function Page() {
     try {
       await applyBase(await decodeFile(versions[i].blob));
       setCurrent(i);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '버전을 열 수 없어요.');
     } finally {
       setBusy('');
     }
