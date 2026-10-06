@@ -99,4 +99,14 @@ describe('embed / newAreaMask / assemble', () => {
     const m = Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8]);
     expect([...embed(m, base, { cw: 2, ch: 2, ox: -1, oy: 0 })]).toEqual([2, 3, 6, 7]);
   });
+  it('실제 편집 마스크로 조립해도 approved=0인 곳은 weight=0이고, 편집 위치는 오프셋만큼 이동', () => {
+    const b = { w: 6, h: 4 };
+    const edit = new Uint8Array(24);
+    edit[1 * 6 + 2] = 255; // 기준 (2,1)
+    for (const f of [{ cw: 8, ch: 6, ox: 1, oy: 2 }, { cw: 4, ch: 4, ox: -1, oy: 0 }]) {
+      const { approved, weight } = assemble(edit, b, f, 1);
+      for (let i = 0; i < approved.length; i++) if (approved[i] === 0) expect(weight[i]).toBe(0);
+      expect(approved[(1 + f.oy) * f.cw + (2 + f.ox)]).toBe(255);
+    }
+  });
 });
