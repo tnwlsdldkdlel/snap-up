@@ -1,0 +1,10 @@
+export const MAX_INPUT_PX = 40_000_000;
+export const MAX_OUTPUT_PX = 60_000_000;
+export const MAX_EXPAND_RATIO = 2;
+export const MODEL_MAX_PX = 2560 * 1440; // 이 이상은 gpt-image-2 experimental
+export const MODEL_MIN_PX = 655_360;
+export const MAX_BODY_BYTES = 4_400_000; // Vercel 함수 본문 4.5MB 제한에 여유
+export const MAX_PROMPT_CHARS = 2000;
+export const SEGMENT_MAX_SIDE = 2048;
+export const API_MASK_DILATE_PX = 32; // 모델 해상도 기준, 이음새를 이어 그릴 여유
+export const MAX_VERSIONS = 10;
