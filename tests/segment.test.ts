@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const from_pretrained = vi.fn();
 vi.mock('@huggingface/transformers', () => {
@@ -41,5 +41,29 @@ describe('segmentRGBA', () => {
     await expect(segmentRGBA(img)).rejects.toThrow('net');
     await expect(segmentRGBA(img)).resolves.toHaveLength(1);
     expect(from_pretrained).toHaveBeenCalledTimes(2);
+  });
+
+  describe('디바이스 선택', () => {
+    afterEach(() => vi.unstubAllGlobals());
+    const run = async () => {
+      const tensor = { sigmoid: () => tensor, mul: () => tensor, to: () => tensor };
+      from_pretrained.mockResolvedValue(async () => ({ output_image: [tensor] }));
+      const { segmentRGBA } = await import('../lib/segment');
+      await segmentRGBA({ w: 1, h: 1, data: new Uint8ClampedArray(4) });
+      return from_pretrained.mock.calls[0][1];
+    };
+
+    it('어댑터가 있으면 webgpu + fp16', async () => {
+      vi.stubGlobal('navigator', { gpu: { requestAdapter: async () => ({}) } });
+      expect(await run()).toEqual({ device: 'webgpu', dtype: 'fp16' });
+    });
+    it('어댑터가 null이면 wasm + fp32', async () => {
+      vi.stubGlobal('navigator', { gpu: { requestAdapter: async () => null } });
+      expect(await run()).toEqual({ device: 'wasm', dtype: 'fp32' });
+    });
+    it('gpu가 없으면 wasm + fp32', async () => {
+      vi.stubGlobal('navigator', {});
+      expect(await run()).toEqual({ device: 'wasm', dtype: 'fp32' });
+    });
   });
 });

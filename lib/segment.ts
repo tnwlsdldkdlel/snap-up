@@ -1,17 +1,25 @@
 import type { RGBA } from './composite';
 import type { Mask } from './mask';
 
-/** 115MB(fp16). 품질이 부족하면 'onnx-community/BiRefNet-portrait-ONNX'(fp16 490MB)로 교체 */
+/** WebGPU fp16 115MB, WASM fp32 ~224MB. 품질이 부족하면 'onnx-community/BiRefNet-portrait-ONNX'(fp16 490MB)로 교체 */
 export const SEGMENT_MODEL = 'onnx-community/BiRefNet_lite-ONNX';
 
 type Loaded = { model: any; processor: any; RawImage: any };
 let loading: Promise<Loaded> | null = null;
 
+async function hasWebGPU(): Promise<boolean> {
+  try {
+    return !!(await (navigator as any).gpu?.requestAdapter());
+  } catch {
+    return false;
+  }
+}
+
 function load(): Promise<Loaded> {
   loading ??= (async () => {
     const { AutoModel, AutoProcessor, RawImage } = await import('@huggingface/transformers');
-    const device = typeof navigator !== 'undefined' && 'gpu' in navigator ? 'webgpu' : 'wasm';
-    const model = await AutoModel.from_pretrained(SEGMENT_MODEL, { device, dtype: 'fp16' });
+    const device = (await hasWebGPU()) ? 'webgpu' : 'wasm';
+    const model = await AutoModel.from_pretrained(SEGMENT_MODEL, { device, dtype: device === 'wasm' ? 'fp32' : 'fp16' });
     const processor = await AutoProcessor.from_pretrained(SEGMENT_MODEL);
     return { model, processor, RawImage };
   })().catch((e) => {
