@@ -35,8 +35,8 @@ describe('기본 연산', () => {
 describe('buildEditMask', () => {
   const base = { w: 4, h: 1 };
   const seg = Uint8Array.from([255, 255, 0, 0]);
-  it('none은 null', () => {
-    expect(buildEditMask('none', seg, null, base)).toBeNull();
+  it('all은 null(전체 편집 여부는 프롬프트로 정한다)', () => {
+    expect(buildEditMask('all', seg, null, base)).toBeNull();
   });
   it('person은 seg 그대로, background는 반전', () => {
     expect([...buildEditMask('person', seg, null, base)!]).toEqual([255, 255, 0, 0]);

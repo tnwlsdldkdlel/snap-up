@@ -2,7 +2,8 @@ import { MAX_EXPAND_RATIO, MAX_OUTPUT_PX, MODEL_MAX_PX, MODEL_MIN_PX } from './l
 
 export type Size = { w: number; h: number };
 export type Mode = 'expand' | 'crop';
-export type Target = 'background' | 'person' | 'none';
+// all: 프롬프트가 있으면 마스크 없이 사진 전체를 편집하고, 비어 있으면 비율 변경만 한다
+export type Target = 'all' | 'background' | 'person';
 /** 출력 캔버스 크기와 그 안에 기준 이미지를 그릴 위치. crop이면 오프셋이 음수다. */
 export type Frame = { cw: number; ch: number; ox: number; oy: number };
 

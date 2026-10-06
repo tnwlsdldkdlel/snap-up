@@ -53,7 +53,7 @@ export function applyBrush(seg: Mask, brush: Mask): Mask {
 
 /** seg가 없으면(인식 실패) 반전하지 않고 브러시 영역만 편집한다. 전체 편집으로 번지는 것을 막기 위함. */
 export function buildEditMask(target: Target, seg: Mask | null, brush: Brush | null, base: Size): Mask | null {
-  if (target === 'none') return null;
+  if (target === 'all') return null;
   let m = seg ? (target === 'background' ? invert(seg) : seg.slice()) : new Uint8Array(base.w * base.h);
   if (brush) m = applyBrush(m, resizeBilinear(brush.mask, brush.w, brush.h, base.w, base.h));
   return m;

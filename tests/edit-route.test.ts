@@ -63,6 +63,58 @@ describe('POST /api/edit', () => {
     expect(String(sent.get('prompt'))).toMatch(/User request: 노을 지는 바다/);
   });
 
+  it('레퍼런스가 있으면 원본을 첫 장으로 image[]에 함께 보내고 프롬프트에 참고용임을 알린다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(valid())) fd.append(k, v);
+    fd.append('reference', file('image/jpeg', 5));
+    fd.append('reference', file('image/jpeg', 7));
+    expect((await POST(new Request('http://x/api/edit', { method: 'POST', body: fd }))).status).toBe(200);
+    const sent = fetchMock.mock.calls[0][1].body as FormData;
+    expect(sent.get('image')).toBeNull();
+    expect(sent.getAll('image[]').map((f) => (f as File).name)).toEqual(['image.jpg', 'reference-1.jpg', 'reference-2.jpg']);
+    expect(String(sent.get('prompt'))).toMatch(/first image is the photo to edit/);
+  });
+
+  it('레퍼런스가 JPEG가 아니거나 너무 많으면 400, 합계가 예산을 넘으면 413', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const withRefs = (refs: (string | File)[]) => {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(valid())) fd.append(k, v);
+      refs.forEach((r) => fd.append('reference', r));
+      return new Request('http://x/api/edit', { method: 'POST', body: fd });
+    };
+    expect((await POST(withRefs([file('image/png')]))).status).toBe(400);
+    expect((await POST(withRefs(['https://evil.example/r.jpg']))).status).toBe(400);
+    expect((await POST(withRefs(Array.from({ length: 4 }, () => file('image/jpeg'))))).status).toBe(400);
+    expect((await POST(withRefs([file('image/jpeg', 4_400_000)]))).status).toBe(413);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('AI 전체 + 프롬프트는 마스크 없이 보내고 전체 편집 지시를 쓴다. 마스크가 오면 400', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { mask: _mask, ...noMask } = valid();
+    expect((await POST(req({ ...noMask, target: 'all', prompt: '노을 분위기로' }))).status).toBe(200);
+    const sent = fetchMock.mock.calls[0][1].body as FormData;
+    expect(sent.get('mask')).toBeNull();
+    expect(String(sent.get('prompt'))).toMatch(/whole photo/);
+    expect((await POST(req({ ...valid(), target: 'all', prompt: '노을 분위기로' }))).status).toBe(400);
+    expect((await POST(req({ ...noMask, target: 'background' }))).status).toBe(400);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('허용 목록의 모델만 그대로 넘기고, 목록 밖 모델은 400', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await POST(req({ ...valid(), model: 'gpt-image-2.5-sunburst' }))).status).toBe(200);
+    expect((fetchMock.mock.calls[0][1].body as FormData).get('model')).toBe('gpt-image-2.5-sunburst');
+    expect((await POST(req({ ...valid(), model: 'dall-e-2' }))).status).toBe(400);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('OpenAI 429·정책 거부를 구분해 돌려준다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('slow down', { status: 429 })));
     expect((await POST(req(valid()))).status).toBe(429);
