@@ -11,8 +11,8 @@
 ## 스택
 
 Next.js(App Router) + TypeScript, Vercel(Fluid compute, Node 런타임), Vitest.
-AI: OpenAI `gpt-image-2`(images/edits), fal BiRefNet(세그멘테이션).
-환경변수(서버 전용, `NEXT_PUBLIC_` 금지): `OPENAI_API_KEY`, `FAL_KEY`, `APP_PASSWORD`. `.env*`는 읽지 않는다.
+AI: OpenAI `gpt-image-2`(images/edits), 브라우저 인물 분할(transformers.js + BiRefNet ONNX).
+환경변수(서버 전용, `NEXT_PUBLIC_` 금지): `OPENAI_API_KEY`, `APP_PASSWORD`. `.env*`는 읽지 않는다.
 
 ## 절대 조건 (깨면 안 됨)
 

@@ -64,30 +64,3 @@ async function edit(label, image, type) {
 
 await edit('jpeg-image', jpg, 'image/jpeg');
 await edit('png-image', png, 'image/png');
-
-const segInput = await sharp(file).rotate().resize(2048, 2048, { fit: 'inside' }).jpeg({ quality: 92 }).toBuffer();
-for (const model of ['Portrait', 'Matting']) {
-  const t = Date.now();
-  const res = await fetch('https://fal.run/fal-ai/birefnet/v2', {
-    method: 'POST',
-    headers: { Authorization: `Key ${process.env.FAL_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      image_url: 'data:image/jpeg;base64,' + segInput.toString('base64'),
-      model,
-      operating_resolution: '2048x2048',
-      output_mask: true,
-      sync_mode: true,
-    }),
-  });
-  const json = await res.json();
-  console.log(`[fal ${model}] status ${res.status}, ${Date.now() - t}ms, keys`, Object.keys(json));
-  const url = json?.mask_image?.url;
-  console.log(`[fal ${model}] mask_image.url 앞부분`, String(url).slice(0, 40));
-  const m = String(url).match(/^data:[^;]+;base64,(.+)$/s);
-  if (m) {
-    const buf = Buffer.from(m[1], 'base64');
-    const meta = await sharp(buf).metadata();
-    console.log(`[fal ${model}] mask ${meta.width}x${meta.height} ch${meta.channels} ${buf.length} bytes`);
-    await fs.writeFile(`probe-out/mask-${model}.png`, buf);
-  }
-}
